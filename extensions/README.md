@@ -84,6 +84,7 @@ When an extension is implemented by more than one vendor, its name can use the r
 
 * [EXT_lights_ies](2.0/Vendor/EXT_lights_ies/README.md)
 * [EXT_lights_image_based](2.0/Vendor/EXT_lights_image_based/README.md)
+* [EXT_materials_retroreflection](2.0/Vendor/EXT_materials_retroreflection/README.md)
 * [EXT_mesh_manifold](2.0/Vendor/EXT_mesh_manifold/README.md)
 
 ## Vendor Extensions
