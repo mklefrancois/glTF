@@ -43,6 +43,11 @@ to show the retroreflective highlight.
 A renderer that does not implement this extension MUST render the material's base PBR
 representation. The extension is therefore never required.
 
+<figure>
+<img src="./figures/retroreflection.png"/>
+<figcaption><em>Left: <code>EXT_materials_retroreflection</code> on both white bands (<code>retroreflectionFactor</code> = 1, masked by <code>retroreflectionTexture</code>). The lower band appears brighter because the light and camera are more closely aligned there — retroreflection is view-dependent. Right: same material without the extension. Rendered in <a href="https://github.com/nvpro-samples/vk_gltf_renderer">vk_gltf_renderer</a> using the <a href="samples/traffic_cone/traffic_cone.gltf">traffic_cone</a> sample.</em></figcaption>
+</figure>
+
 ## Extending Materials
 
 Adding `EXT_materials_retroreflection` to a material's `extensions`:
@@ -84,22 +89,25 @@ w = retroreflectionFactor * (retroreflectionTexture.r if present else 1)
 
 *This section is non-normative.*
 
-For a standard microfacet BSDF `f(V, L, mat)`, where `V` is the outgoing view direction
-(surface -> camera), define the reflected view direction:
+For the full material BSDF `f(V, L, mat)`, let `V` be the outgoing view direction
+(surface → camera) and `L` the direction toward the light. The retroreflective response
+applies the Minimal Retroreflective Microfacet (MRM) substitution from Portsmouth et al. 2026:
 
 ```
-V_retro = 2 * dot(V, N) * N - V
-```
+V_retro = reflect(-V, N)
 
-The retroreflective lobe is:
-
-```
 f_retro(V, L, mat) = f(V_retro, L, mat)
-f_blended(V, L)    = lerp(f(V, L, mat), f_retro(V, L, mat), w)
+f_blended(V, L, mat) = lerp(f(V, L, mat), f_retro(V, L, mat), w)
 ```
 
-The same reflected-view substitution is used when sampling the retroreflective lobe and
-when evaluating its PDF; see Listing 1 of Portsmouth et al. 2026.
+where `w` is the per-shading-point weight from the Properties section and `f` is the
+material's existing BRDF/BSDF evaluation (for example, as defined in
+[Appendix B](https://www.khronos.org/registry/glTF/specs/2.0/glTF-2.0.html#appendix-b-brdf-implementation)
+of the glTF 2.0 specification).
+
+Implementations of `f` can vary based on device performance and resource constraints. The
+same `V → V_retro` substitution is used when sampling the retroreflective lobe and when
+evaluating its PDF; see Listing 1 of Portsmouth et al. 2026.
 
 ### BTDF policy
 
