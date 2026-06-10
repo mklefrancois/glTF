@@ -17,7 +17,7 @@ Written against the glTF 2.0 spec.
 
 This extension adds a physically-plausible retroreflective response to any glTF material model.
 It is based on the Minimal Retroreflective Microfacet (MRM) model of [Portsmouth et al. (JCGT 15(1), 2026)](http://jcgt.org/published/0015/01/04/),
-which turns a BSDF into a retroreflective one by substituting the outgoing view direction $V$ with its reflection about the surface normal, $V_\text{retro} \coloneqq 2 N (V \cdot N) - V$, before evaluation and sampling.
+which turns a BSDF into a retroreflective one by substituting the outgoing view direction $V$ with its reflection about the surface normal, $V_\text{retro} = 2 N (V \cdot N) - V$, before evaluation and sampling.
 This redirects the specular peak into the back-scatter direction, producing the bright
 retroreflective highlight seen on high-visibility clothing,
 glass-bead road markings, many safety signs, and other materials.
@@ -65,7 +65,17 @@ The extension object contains the following properties:
 
 The final per-shading-point retroreflection weight $w$ is:
 
-$$w = \texttt{retroreflectionFactor} \times \begin{cases}\texttt{retroreflectionTexture.r} & \text{if present} \\ 1 & \text{otherwise}\end{cases} $$
+```
+retroreflectionFactor * retroreflectionTexture.r
+```
+
+if `retroreflectionTexture` is present and
+
+```
+retroreflectionFactor
+```
+
+otherwise.
 
 ## Implementation
 
@@ -80,11 +90,11 @@ More specifically, for each BRDF $f(L, V, \text{mat})$, where
 
 its retroreflective BSDF is
 
-$$f_\text{retro}(L, V, \text{mat}) \coloneqq f(L, V_\text{retro}, \text{mat})$$
+$$f_\text{retro}(L, V, \text{mat}) = f(L, V_\text{retro}, \text{mat})$$
 
 where $V_\text{retro}$ is $V$ reflected about the normal $N$:
 
-$$V_\text{retro} \coloneqq \texttt{reflect}(-V, N) = 2 N (V \cdot N) - V.$$
+$$V_\text{retro} = \texttt{reflect}(-V, N) = 2 N (V \cdot N) - V.$$
 
 Then this extension replaces $f$ with
 
