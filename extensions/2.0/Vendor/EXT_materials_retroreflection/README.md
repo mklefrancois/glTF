@@ -2,8 +2,8 @@
 
 ## Contributors
 
-* Martin-Karl Lefrançois, NVIDIA, @mklefrancois
-* Nia Bickford, NVIDIA, @NBickford-NV
+* Martin-Karl Lefrançois, NVIDIA, [@mklefrancois](https://github.com/mklefrancois)
+* Nia Bickford, NVIDIA, [@NBickford-NV](https://github.com/NBickford-NV)
 
 ## Status
 
