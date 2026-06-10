@@ -1,13 +1,9 @@
-<!--
-Copyright 2026 NVIDIA Corporation. All rights reserved.
--->
-
 # EXT_materials_retroreflection
 
 ## Contributors
 
-* Martin-Karl Lefrancois, NVIDIA, mlefrancois@nvidia.com
-* Based on Portsmouth, Raab, Belcour, Liu — "The Minimal Retroreflective Microfacet Model", JCGT 15(1), 2026
+* Martin-Karl Lefrançois, NVIDIA, @mklefrancois
+* Nia Bickford, NVIDIA, @NBickford-NV
 
 ## Status
 
@@ -15,42 +11,28 @@ Draft
 
 ## Dependencies
 
-Written against the glTF 2.0 specification.
-
-## Interaction with other extensions
-
-This extension is compatible with `KHR_materials_specular`, `KHR_materials_ior`, and
-`KHR_materials_anisotropy`, but does not require them. The retroreflective lobe targets
-the microfacet specular and metal lobes; diffuse and sheen lobes are unaffected.
+Written against the glTF 2.0 spec.
 
 ## Overview
 
-This extension adds a physically-plausible retroreflective response to any glTF material that
-uses a microfacet BSDF (GGX). It implements the *Minimal Retroreflective Microfacet (MRM)*
-model of Portsmouth et al. (JCGT 15(1), 2026): the only required modification of a standard
-microfacet BSDF is to substitute the outgoing view direction `V` with its reflection about
-the surface normal, `V_retro = 2 * dot(V, N) * N - V`, before evaluation and sampling.
-This redirects the GGX specular peak into the back-scatter direction, producing the bright
-retroreflective highlight seen on safety tape, traffic cones, high-visibility clothing,
-glass-bead road markings, and corner-reflector arrays. MRM preserves reciprocity and
-energy conservation under reflection-symmetric NDFs (including GGX, Beckmann, and Phong).
+This extension adds a physically-plausible retroreflective response to any glTF material model.
+It is based on the Minimal Retroreflective Microfacet (MRM) model of [Portsmouth et al. (JCGT 15(1), 2026)](http://jcgt.org/published/0015/01/04/),
+which turns a BSDF into a retroreflective one by substituting the outgoing view direction $V$ with its reflection about the surface normal, $V_\text{retro} \coloneqq 2 N (V \cdot N) - V$, before evaluation and sampling.
+This redirects the specular peak into the back-scatter direction, producing the bright
+retroreflective highlight seen on high-visibility clothing,
+glass-bead road markings, many safety signs, and other materials.
+In addition, MRM preserves reciprocity and energy conservation under reflection-symmetric NDFs (including GGX, Beckmann, and Phong).
 
-A `retroreflectionFactor` linearly blends between the regular forward microfacet (`0`) and
-the retroreflective microfacet (`1`), matching the OpenPBR `geometry_retroreflection`
-control. The base material roughness controls how closely the camera and light must align
-to show the retroreflective highlight.
-
-A renderer that does not implement this extension MUST render the material's base PBR
-representation. The extension is therefore never required.
+A *retroreflection weight* then linearly blends between the regular material model (at a factor of 0) and the retroreflective material model (at a factor of 1). This matches the OpenPBR `specular_retroreflectivity` parameter.
 
 <figure>
 <img src="./figures/retroreflection.png"/>
-<figcaption><em>Left: <code>EXT_materials_retroreflection</code> on both white bands (<code>retroreflectionFactor</code> = 1, masked by <code>retroreflectionTexture</code>). The lower band appears brighter because the light and camera are more closely aligned there — retroreflection is view-dependent. Right: same material without the extension. Rendered in <a href="https://github.com/nvpro-samples/vk_gltf_renderer">vk_gltf_renderer</a> using the <a href="samples/traffic_cone/traffic_cone.gltf">traffic_cone</a> sample.</em></figcaption>
+<figcaption><em>Left: A traffic cone with <code>EXT_materials_retroreflection</code> on both sleeves (using a <code>retroreflectionFactor</code> of 1, masked by <code>retroreflectionTexture</code>). The lower sleeve appears brighter than the top sleeve because the light and camera are more closely aligned there. Right: The same traffic cone model and material without the extension. Rendered in <a href="https://github.com/nvpro-samples/vk_gltf_renderer">vk_gltf_renderer</a> using the <a href="samples/traffic_cone/traffic_cone.gltf">traffic_cone</a> sample.</em></figcaption>
 </figure>
 
 ## Extending Materials
 
-Adding `EXT_materials_retroreflection` to a material's `extensions`:
+`EXT_materials_retroreflection` can be added to a material's `extensions`, like this:
 
 ```json
 {
@@ -74,66 +56,70 @@ Adding `EXT_materials_retroreflection` to a material's `extensions`:
 }
 ```
 
+The extension object contains the following properties:
+
 | | Type | Description | Required |
 | -------------------------- | -------- | ----------- | ------------------ |
-| **retroreflectionFactor** | `number` | Linear blend between forward microfacet (0.0) and retroreflective microfacet (1.0). Range [0, 1]. | No, default: `0.0` |
+| **retroreflectionFactor** | `number` | Linear blend between forward microfacet (0.0) and retroreflective microfacet (1.0). Range [0, 1]. | No, default: `1.0` |
 | **retroreflectionTexture** | [`textureInfo`](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#reference-textureinfo) | Per-texel multiplier for `retroreflectionFactor`, sampled from the **R** channel. Values outside [0,1] are clamped. | No |
 
-The final per-shading-point retroreflection weight is:
+The final per-shading-point retroreflection weight $w$ is:
 
-```
-w = retroreflectionFactor * (retroreflectionTexture.r if present else 1)
-```
+$$w = \texttt{retroreflectionFactor} \times \begin{cases}\texttt{retroreflectionTexture.r} & \text{if present} \\ 1 & \text{otherwise}\end{cases} $$
 
 ## Implementation
 
 *This section is non-normative.*
 
-For the full material BSDF `f(V, L, mat)`, let `V` be the outgoing view direction
-(surface → camera) and `L` the direction toward the light. The retroreflective response
-applies the Minimal Retroreflective Microfacet (MRM) substitution from Portsmouth et al. 2026:
+If this extension is present on a material, then it replaces each of the materials BRDF lobes (i.e. all lobes except for transmissive lobes) with a blend between the original BRDF and a retroreflective BRDF.
 
-```
-V_retro = reflect(-V, N)
+More specifically, for each BRDF $f(L, V, \text{mat})$, where
+* $L$ is the direction from the surface to the incoming light
+* $V$ is the direction from the surface to the outgoing light (for a renderer that only computes direct lighting, this is the view direction)
+* $\text{mat}$ includes the material properties at the shading point, including the surface normal $N$,
 
-f_retro(V, L, mat) = f(V_retro, L, mat)
-f_blended(V, L, mat) = lerp(f(V, L, mat), f_retro(V, L, mat), w)
-```
+its retroreflective BSDF is
 
-where `w` is the per-shading-point weight from the Properties section and `f` is the
-material's existing BRDF/BSDF evaluation (for example, as defined in
-[Appendix B](https://www.khronos.org/registry/glTF/specs/2.0/glTF-2.0.html#appendix-b-brdf-implementation)
-of the glTF 2.0 specification).
+$$f_\text{retro}(L, V, \text{mat}) \coloneqq f(L, V_\text{retro}, \text{mat})$$
 
-Implementations of `f` can vary based on device performance and resource constraints. The
-same `V → V_retro` substitution is used when sampling the retroreflective lobe and when
+where $V_\text{retro}$ is $V$ reflected about the normal $N$:
+
+$$V_\text{retro} \coloneqq \texttt{reflect}(-V, N) = 2 N (V \cdot N) - V.$$
+
+Then this extension replaces $f$ with
+
+$$f_\text{blended} = \texttt{mix}(f, f_\text{retro}, w)$$
+
+where $w$ is the per-shading-point weight from the [Extending Materials](#extending-materials) section.
+
+The
+same $V \to V_\text{retro}$ substitution is used when sampling $f_\text{retro}$ and when
 evaluating its PDF; see Listing 1 of Portsmouth et al. 2026.
 
-### BTDF policy
+### Note on BTDFs
 
-Per Sec. 5 of Portsmouth et al. 2026 ("Combination of BRDF and BTDF"), authors observed that
-using the regular (non-MRM) BTDF `f_t` instead of `f_{t,MRM}` produces more intuitive results,
-particularly when the index of refraction is close to 1. This extension follows the same
-recommendation: **authors should not enable `retroreflectionFactor` on materials that also
-carry `KHR_materials_transmission` with IOR ≈ 1**. The renderer's linear-blend implementation
-applies the MRM substitution to all lobes for simplicity, so the renderer cannot enforce
-this policy — it is up to the asset author to keep retroreflection assigned to opaque or
-near-opaque materials. Mixed glass + retroreflective surfaces are out of scope.
+Implementations may choose to replace $V$ by $V_\text{retro}$ in the BSDF for the entire material to form a retroreflective BSDF for the entire material. This is often simpler to implement because one can apply the $V \to V_\text{retro}$ substitution at a higher level rather than in individual lobes.
+
+However, as described in Section 5 of Portsmouth et al. 2026, this produces nonintuitive results for transmissive materials, especially when the index of refraction $\eta$ is near 1. Therefore, this specification recommends applying retroreflection only to reflective lobes, which also matches OpenPBR and MaterialX's retroreflection implementations.
+
+## Optional vs. Required
+
+This extension should not be listed in the `extensionsRequired` list, as retroreflectivity is generally not significant enough to justify blocking the entire scene from loading. We use "should not" instead of "must not" here, though, because there are some cases where retroreflectivity is so important to an object that it justifies listing this extension under `extensionsRequired`.
 
 ## Schema
 
 * [material.EXT_materials_retroreflection.schema.json](schema/material.EXT_materials_retroreflection.schema.json)
 
-## Sample Assets
+## Sample Asset
 
-* [traffic_cone](samples/traffic_cone/traffic_cone.gltf) — traffic cone with `retroreflectionFactor` and `retroreflectionTexture`, shown alongside a non-retroreflective material for comparison. Includes `KHR_lights_punctual` for directional lighting. Model by [hinndia](https://sketchfab.com/hinndia), [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/); see [license.txt](samples/traffic_cone/license.txt).
+The included [traffic_cone](samples/traffic_cone/traffic_cone.gltf) sample contains a traffic cone with a retroreflective material using the `retroreflectionFactor` and `retroreflectionTexture` parameters, alongside the same cone with a non-retroreflective material for comparison. It includes `KHR_lights_punctual` for directional lighting (note though that `EXT_materials_retroreflection` does not depend on `KHR_lights_punctual`). [The original model](https://sketchfab.com/3d-models/traffic-cone-573feef839d7450cb3e12da9986e7a98) was created by [hinndia](https://sketchfab.com/hinndia), modified by Martin-Karl Lefrançois to add retroreflection, and is licensed under [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/); see [license.txt](samples/traffic_cone/license.txt).
 
 ## Known Implementations
 
-* [NVIDIA vk_gltf_renderer](https://github.com/nvpro-samples/vk_gltf_renderer)
+* [NVIDIA DesignWorks Samples' vk_gltf_renderer](https://github.com/nvpro-samples/vk_gltf_renderer)
 
 ## Resources
 
-* Portsmouth, J.; Raab, M.; Belcour, L.; Liu, F. *The Minimal Retroreflective Microfacet
-  Model.* Journal of Computer Graphics Techniques, 15(1):60–75, 2026.
-  <http://jcgt.org/published/0015/01/04/>
+* [Jamie Portsmouth, Matthias Raab, Laurent Belcour, and Francis Liu, The Minimal Retroreflective Microfacet Model, *Journal of Computer Graphics Techniques (JCGT)*, vol. 15, no. 1, 60-75, 2026](http://jcgt.org/published/0015/01/04/)
+* [Retroreflection in MaterialX](https://github.com/AcademySoftwareFoundation/MaterialX/pull/2783)
+* [Retroreflection in the OpenPBR 1.2 draft](https://github.com/AcademySoftwareFoundation/OpenPBR/blob/475bd90d5211d1a4bfb3227d147c692cbd9bc958/index.html#retroreflectivity)
